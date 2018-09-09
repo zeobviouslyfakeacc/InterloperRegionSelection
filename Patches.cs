@@ -129,6 +129,17 @@ namespace InterloperRegionSelection {
 		[HarmonyPatch(typeof(Panel_SelectRegion), "Enable", new Type[] { typeof(bool) })]
 		private static class PreventDelegatesListChange {
 
+			private static void Prefix(Panel_SelectRegion __instance) {
+				if (__instance != fake_Panel_SelectRegion)
+					return;
+
+				GameRegion regionLastPlayed = InterfaceManager.m_Panel_OptionsMenu.m_State.m_StartRegion;
+				if (!__instance.m_RegionOrder.Contains(regionLastPlayed)) {
+					// Make sure that *some* region is selected
+					__instance.SelectRegion(0, false);
+				}
+			}
+
 			private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instr) {
 				List<CodeInstruction> instructions = new List<CodeInstruction>(instr);
 
