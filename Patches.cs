@@ -40,12 +40,15 @@ namespace InterloperRegionSelection {
 		private static class UseSelectedInterloperRegion {
 			private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instr) {
 				List<CodeInstruction> instructions = new List<CodeInstruction>(instr);
-				MethodInfo method = AccessTools.Method(typeof(ExperienceModeManager), "GetCurrentExperienceModeType");
+				MethodInfo getExpModeTypeMethod = AccessTools.Method(typeof(ExperienceModeManager), "GetCurrentExperienceModeType");
+				FieldInfo optionsMenuField = AccessTools.Field(typeof(InterfaceManager), "m_Panel_OptionsMenu");
+				FieldInfo profileStateField = AccessTools.Field(typeof(Panel_OptionsMenu), "m_State");
+				FieldInfo selectedStartRegionField = AccessTools.Field(typeof(ProfileState), "m_StartRegion");
 				int count = 0;
 
-				// Add && gameRegion == GameRegion.RandomRegion to the second
+				// Add && InterfaceManager.m_Panel_OptionsMenu.m_State.m_StartRegion == GameRegion.RandomRegion to the second
 				// GameManager.GetExperienceModeManagerComponent().GetCurrentExperienceModeType() == ExperienceModeType.Interloper
-				// check that would reset the spawnRegion string to a random interloper region
+				// check that would reset the sceneName string to a random interloper region
 
 				yield return instructions[0];
 				for (int i = 1; i < instructions.Count; ++i) {
@@ -53,12 +56,14 @@ namespace InterloperRegionSelection {
 					CodeInstruction curr = instructions[i];
 					yield return curr;
 
-					if (last.opcode == OpCodes.Callvirt && last.operand == method
+					if (last.opcode == OpCodes.Callvirt && getExpModeTypeMethod.Equals(last.operand)
 						&& curr.opcode == OpCodes.Ldc_I4_S && (sbyte) curr.operand == (sbyte) ExperienceModeType.Interloper) {
 						if (++count == 2) {
 							CodeInstruction branch = instructions[i + 1];
 							yield return branch;
-							yield return new CodeInstruction(OpCodes.Ldloc_1);
+							yield return new CodeInstruction(OpCodes.Ldsfld, optionsMenuField);
+							yield return new CodeInstruction(OpCodes.Ldfld, profileStateField);
+							yield return new CodeInstruction(OpCodes.Ldfld, selectedStartRegionField);
 							yield return new CodeInstruction(OpCodes.Ldc_I4_S, (sbyte) GameRegion.RandomRegion);
 						}
 					}
