@@ -1,22 +1,22 @@
 ﻿using System;
-using Old = System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Reflection.Emit;
 using Harmony;
 using UnityEngine;
+using IL2CPP = Il2CppSystem.Collections.Generic;
 
 namespace InterloperRegionSelection {
 	internal class Patches {
 
 		private static Panel_SelectRegion real_Panel_SelectRegion;
 		private static Panel_SelectRegion fake_Panel_SelectRegion;
+		private static bool overrideSceneToLoad = false;
 
 		[HarmonyPatch(typeof(Panel_MainMenu), "RegionLockedBySelectedMode", new Type[0])]
 		private static class UnlockInterloperRegionSelection {
 			private static bool Prefix(ref bool __result) {
-				if (GameManager.GetExperienceModeManagerComponent().GetCurrentExperienceModeType() == ExperienceModeType.Interloper) {
+				if (ExperienceModeManager.GetCurrentExperienceModeType() == ExperienceModeType.Interloper) {
 					__result = false;
 					return false;
 				} else {
@@ -28,46 +28,26 @@ namespace InterloperRegionSelection {
 		[HarmonyPatch(typeof(Panel_MainMenu), "OnSelectExperienceContinue", new Type[0])]
 		private static class UseModifiedRegionSelectPanel {
 			private static void Prefix() {
-				if (GameManager.GetExperienceModeManagerComponent().GetCurrentExperienceModeType() == ExperienceModeType.Interloper) {
+				if (ExperienceModeManager.GetCurrentExperienceModeType() == ExperienceModeType.Interloper) {
 					InterfaceManager.m_Panel_SelectRegion = fake_Panel_SelectRegion;
+					overrideSceneToLoad = true;
 				} else {
 					InterfaceManager.m_Panel_SelectRegion = real_Panel_SelectRegion;
+					overrideSceneToLoad = false;
 				}
 			}
 		}
 
-		[HarmonyPatch(typeof(Panel_MainMenu), "OnSandboxFinal", new Type[0])]
-		private static class UseSelectedInterloperRegion {
-			private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instr) {
-				List<CodeInstruction> instructions = new List<CodeInstruction>(instr);
-				MethodInfo getExpModeTypeMethod = AccessTools.Method(typeof(ExperienceModeManager), "GetCurrentExperienceModeType");
-				FieldInfo optionsMenuField = AccessTools.Field(typeof(InterfaceManager), "m_Panel_OptionsMenu");
-				FieldInfo profileStateField = AccessTools.Field(typeof(Panel_OptionsMenu), "m_State");
-				FieldInfo selectedStartRegionField = AccessTools.Field(typeof(ProfileState), "m_StartRegion");
-				int count = 0;
+		[HarmonyPatch(typeof(GameManager), "LoadSceneWithLoadingScreen")]
+		private static class SetSceneToBeLoaded {
+			private static void Prefix(ref string sceneName) {
+				if (!overrideSceneToLoad) return;
 
-				// Add && InterfaceManager.m_Panel_OptionsMenu.m_State.m_StartRegion == GameRegion.RandomRegion to the second
-				// GameManager.GetExperienceModeManagerComponent().GetCurrentExperienceModeType() == ExperienceModeType.Interloper
-				// check that would reset the sceneName string to a random interloper region
-
-				yield return instructions[0];
-				for (int i = 1; i < instructions.Count; ++i) {
-					CodeInstruction last = instructions[i - 1];
-					CodeInstruction curr = instructions[i];
-					yield return curr;
-
-					if (last.opcode == OpCodes.Callvirt && getExpModeTypeMethod.Equals(last.operand)
-						&& curr.opcode == OpCodes.Ldc_I4_S && (sbyte) curr.operand == (sbyte) ExperienceModeType.Interloper) {
-						if (++count == 2) {
-							CodeInstruction branch = instructions[i + 1];
-							yield return branch;
-							yield return new CodeInstruction(OpCodes.Ldsfld, optionsMenuField);
-							yield return new CodeInstruction(OpCodes.Ldfld, profileStateField);
-							yield return new CodeInstruction(OpCodes.Ldfld, selectedStartRegionField);
-							yield return new CodeInstruction(OpCodes.Ldc_I4_S, (sbyte) GameRegion.RandomRegion);
-						}
-					}
+				GameRegion startRegion = InterfaceManager.m_Panel_OptionsMenu.m_State.m_StartRegion;
+				if (startRegion != GameRegion.RandomRegion && startRegion != GameRegion.FutureRegion) {
+					sceneName = InterfaceManager.m_Panel_OptionsMenu.m_State.m_StartRegion.ToString();
 				}
+				overrideSceneToLoad = false;
 			}
 		}
 
@@ -90,49 +70,29 @@ namespace InterloperRegionSelection {
 				int len = interloperRegions.Length;
 
 				List<GameRegion> regionOrder = new List<GameRegion>(len);
-				List<GameObject> regionScrollListItems = new List<GameObject>(len);
-				List<GameObject> regionDescriptionsLocked = new List<GameObject>(len);
 				List<GameObject> regionDescriptionsUnlocked = new List<GameObject>(len);
+				IL2CPP.List<GameObject> regionScrollListItems = new IL2CPP.List<GameObject>(len);
 
 				for (int i = 0; i < panel.m_RegionOrder.Length; ++i) {
 					GameRegion region = panel.m_RegionOrder[i];
 					if (interloperRegions.Contains(region) || region == GameRegion.RandomRegion) {
 						regionOrder.Add(region);
 						regionScrollListItems.Add(panel.m_RegionScrollListItems[i]);
-						regionDescriptionsLocked.Add(panel.m_RegionDescriptionsLocked[i]);
 						regionDescriptionsUnlocked.Add(panel.m_RegionDescriptionsUnlocked[i]);
 					} else {
 						UnityEngine.Object.Destroy(panel.m_RegionScrollListItems[i]);
-						UnityEngine.Object.Destroy(panel.m_RegionDescriptionsLocked[i]);
 						UnityEngine.Object.Destroy(panel.m_RegionDescriptionsUnlocked[i]);
 					}
 				}
 
 				panel.m_RegionOrder = regionOrder.ToArray();
-				panel.m_RegionScrollListItems = regionScrollListItems;
-				panel.m_RegionDescriptionsLocked = regionDescriptionsLocked.ToArray();
 				panel.m_RegionDescriptionsUnlocked = regionDescriptionsUnlocked.ToArray();
+				panel.m_RegionScrollListItems = regionScrollListItems;
 			}
-		}
-
-		[HarmonyPatch(typeof(Panel_SelectRegion), "Start", new Type[0])]
-		private static class FixDelegatesList {
-			private static void Postfix(Panel_SelectRegion __instance) {
-				Old.IList delegates = (Old.IList) AccessTools.Field(typeof(Panel_SelectRegion), "m_RegionLockedDelegates").GetValue(__instance);
-				Type delegateType = AccessTools.Inner(typeof(Panel_SelectRegion), "OnBoolMethod");
-				object returnFalse = Delegate.CreateDelegate(delegateType, AccessTools.Method(typeof(FixDelegatesList), "ReturnFalse"));
-
-				delegates.Clear();
-				for (int i = 0; i < __instance.m_RegionOrder.Length; ++i) {
-					delegates.Add(returnFalse);
-				}
-			}
-
-			private static bool ReturnFalse() => false;
 		}
 
 		[HarmonyPatch(typeof(Panel_SelectRegion), "Enable", new Type[] { typeof(bool) })]
-		private static class PreventDelegatesListChange {
+		private static class EnsureSomeRegionSelectedInFakePanel {
 
 			private static void Prefix(Panel_SelectRegion __instance) {
 				if (__instance != fake_Panel_SelectRegion)
@@ -142,32 +102,6 @@ namespace InterloperRegionSelection {
 				if (!__instance.m_RegionOrder.Contains(regionLastPlayed)) {
 					// Make sure that *some* region is selected
 					__instance.SelectRegion(0, false);
-				}
-			}
-
-			private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instr) {
-				List<CodeInstruction> instructions = new List<CodeInstruction>(instr);
-
-				int i = 0;
-				// Take until m_RegionLockedDelegates.Clear();
-				for (; i < instructions.Count - 2; ++i) {
-					CodeInstruction op = instructions[i + 2];
-					if (op.opcode == OpCodes.Callvirt && ((MethodInfo) op.operand).Name == "Clear") {
-						break;
-					}
-					yield return instructions[i];
-				}
-				// Skip until m_RegionLockedDelegates.AddRange(...);
-				for (; i < instructions.Count; ++i) {
-					CodeInstruction op = instructions[i];
-					if (op.opcode == OpCodes.Callvirt && ((MethodInfo) op.operand).Name == "AddRange") {
-						++i;
-						break;
-					}
-				}
-				// Take the rest
-				for (; i < instructions.Count; ++i) {
-					yield return instructions[i];
 				}
 			}
 		}
