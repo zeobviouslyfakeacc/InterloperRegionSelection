@@ -11,10 +11,10 @@ just like you could when starting a Pilgrim, Voyageur, Stalker, or custom mode g
 
 ## Instructions
 
-1. Start a game in Interloper mode:
+1. Start a new game in Interloper mode:
 
    ![Screenshot of experience mode selection](images/screenshot-1.png)
-2. Select a starting region from the list:
+2. Select one of the starting regions available in Interloper from the map:
 
    ![Screenshot of starting region selection](images/screenshot-2.png)
 
