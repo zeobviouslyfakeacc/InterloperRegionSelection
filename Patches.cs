@@ -7,7 +7,7 @@ namespace InterloperRegionSelection {
 
 		private static bool overrideSceneToLoad = false;
 
-		[HarmonyPatch(typeof(Panel_MainMenu), "RegionLockedBySelectedMode", new Type[0])]
+		[HarmonyPatch(typeof(GameManager), "RegionLockedBySelectedMode", new Type[0])]
 		private static class UnlockInterloperRegionSelection {
 			private static bool Prefix(ref bool __result) {
 				if (ExperienceModeManager.GetCurrentExperienceModeType() == ExperienceModeType.Interloper) {
@@ -19,12 +19,17 @@ namespace InterloperRegionSelection {
 			}
 		}
 
-		[HarmonyPatch(typeof(Panel_MainMenu), "OnSelectExperienceContinue", new Type[0])]
-		private static class UseModifiedRegionSelectPanel {
+		[HarmonyPatch(typeof(Panel_SelectRegion_Map), "OnSelectRegionContinue", new Type[0])]
+		private static class OverrideSceneLoadWhenComingFromInterloperRegionSelection {
 			private static void Prefix() {
-				if (ExperienceModeManager.GetCurrentExperienceModeType() == ExperienceModeType.Interloper) {
-					overrideSceneToLoad = true;
-				} else {
+				overrideSceneToLoad = (ExperienceModeManager.GetCurrentExperienceModeType() == ExperienceModeType.Interloper);
+			}
+		}
+
+		[HarmonyPatch(typeof(Panel_SelectRegion_Map), "OnClickBack", new Type[0])]
+		private static class DontOverrideSceneLoadWhenCancellingRegionSelect {
+			private static void Prefix(Panel_SelectRegion_Map __instance) {
+				if (!__instance.m_PreviousSelectedItem) {
 					overrideSceneToLoad = false;
 				}
 			}
@@ -45,9 +50,13 @@ namespace InterloperRegionSelection {
 
 		[HarmonyPatch(typeof(Panel_SelectRegion_Map), "Enable", new Type[] { typeof(bool) })]
 		private static class EnsureOnlyInterloperRegionsSelectable {
-			private static void Postfix(Panel_SelectRegion_Map __instance) {
+			private static void Postfix(Panel_SelectRegion_Map __instance, bool enable) {
+				if (!enable) {
+					return;
+				}
+
 				if (ExperienceModeManager.GetCurrentExperienceModeType() == ExperienceModeType.Interloper) {
-					GameRegion[] interloperRegions = InterfaceManager.m_Panel_MainMenu.m_InterloperRegions;
+					GameRegion[] interloperRegions = GameManager.Instance().m_SandboxConfig.m_InterloperRegions;
 					foreach (SelectRegionItem item in __instance.m_Items) {
 						item.gameObject.SetActive(interloperRegions.Contains(item.m_Region));
 					}
@@ -63,7 +72,7 @@ namespace InterloperRegionSelection {
 		private static class DisableControllerSelectionOfInvalidInterloperRegions {
 			private static bool Prefix(SelectRegionItem item) {
 				return ExperienceModeManager.GetCurrentExperienceModeType() != ExperienceModeType.Interloper
-					|| !item || InterfaceManager.m_Panel_MainMenu.m_InterloperRegions.Contains(item.m_Region);
+					|| !item || GameManager.Instance().m_SandboxConfig.m_InterloperRegions.Contains(item.m_Region);
 			}
 		}
 	}
