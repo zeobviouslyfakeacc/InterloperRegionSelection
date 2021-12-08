@@ -40,9 +40,9 @@ namespace InterloperRegionSelection {
 			private static void Prefix(ref string sceneName) {
 				if (!overrideSceneToLoad) return;
 
-				GameRegion startRegion = InterfaceManager.m_Panel_OptionsMenu.m_State.m_StartRegion;
+				GameRegion startRegion = GameManager.m_StartRegion;
 				if (startRegion != GameRegion.RandomRegion && startRegion != GameRegion.FutureRegion) {
-					sceneName = InterfaceManager.m_Panel_OptionsMenu.m_State.m_StartRegion.ToString();
+					sceneName = GameManager.m_StartRegion.ToString();
 				}
 				overrideSceneToLoad = false;
 			}
